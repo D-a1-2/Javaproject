@@ -11,7 +11,7 @@ public class TemperatureConverter {
      * @param c 摄氏温度
      * @return 对应的华氏温度
      */
-    public static double celsiusToFahrenheit(double c) {
+    public static double a(double c) {
         return c * 9.0 / 5.0 + 32.0;
     }
 
@@ -21,7 +21,7 @@ public class TemperatureConverter {
      * @param f 华氏温度
      * @return 对应的摄氏温度
      */
-    public static double fahrenheitToCelsius(double f) {
+    public static double b(double f) {
         return (f - 32.0) * 5.0 / 9.0;
     }
 
@@ -46,12 +46,12 @@ public class TemperatureConverter {
 
             if (unit.startsWith("C")) {
                 // 从摄氏度转换为华氏度
-                double f = celsiusToFahrenheit(value);
+                double f = a(value);
                 // 使用 %s 完美还原 Python 的浮点数默认显示效果
                 System.out.printf("%s °C = %.2f °F\n", value, f);
             } else if (unit.startsWith("F")) {
                 // 从华氏度转换为摄氏度
-                double c = fahrenheitToCelsius(value);
+                double c = b(value);
                 System.out.printf("%s °F = %.2f °C\n", value, c);
             } else {
                 System.out.println("未知单位，请使用 C 或 F。");
