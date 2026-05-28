@@ -1,0 +1,6 @@
+爬取方式：网页标题快速爬取
+数据来源：https://www.example.com
+爬取时间：2026-05-28 17:31:46
+标题：Example Domain
+内容：
+网页标题：Example Domain
