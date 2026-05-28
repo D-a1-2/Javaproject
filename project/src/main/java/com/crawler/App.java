@@ -1,410 +1,265 @@
 package com.crawler;
 
 import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
+import java.net.*;
+import java.nio.charset.*;
 import java.nio.file.*;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.*;
+import java.time.format.*;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.regex.*;
 
-/**
- * Java 期末爬虫项目：CLI + MVC + Command 模式 + 策略模式 + 异常体系。
- * 为了便于提交和查看，所有类整合在一个源码文件中。
- */
+// CLI + MVC + Command + Strategy + Exception，单文件版课程项目源码
 public class App {
     public static void main(String[] args) {
-        new Controller(new ConsoleView()).run();
+        new Controller(new View()).run();
     }
 
-    // ========================= MVC: Controller =========================
+    // MVC: Controller
     static class Controller {
-        private final ConsoleView view;
-        private final Map<String, Command> commands = new LinkedHashMap<>();
-        private final StrategyFactory factory = new StrategyFactory();
-        private final ResultStorage storage = new ResultStorage("data");
+        View view;
+        Storage storage = new Storage("data");
+        StrategyFactory factory = new StrategyFactory();
+        Map<String, Command> commands = new LinkedHashMap<>();
 
-        Controller(ConsoleView view) {
+        Controller(View view) {
             this.view = view;
-            commands.put("help", new HelpCommand(commands, view));
+            commands.put("help", a -> {
+                commands.forEach((k, v) -> view.out(k + " - " + v.desc()));
+                return true;
+            });
             commands.put("crawl", new CrawlCommand(factory, storage, view));
             commands.put("batch", new BatchCommand(factory, storage, view));
-            commands.put("exit", new ExitCommand(view));
+            commands.put("exit", a -> {
+                view.out("程序结束");
+                return false;
+            });
         }
 
         void run() {
-            view.println("Java 期末爬虫项目，输入 help 查看命令。");
+            view.out("Java爬虫项目，输入 help 查看命令");
             boolean running = true;
             while (running) {
                 try {
-                    String line = view.input("> ");
-                    if (line.isBlank()) {
-                        continue;
-                    }
+                    String line = view.in("> ");
+                    if (line.isBlank()) continue;
                     String[] args = line.trim().split("\\s+");
-                    Command command = commands.get(args[0].toLowerCase());
-                    if (command == null) {
-                        throw new ValidationException("未知命令：" + args[0]);
-                    }
-                    running = command.execute(args);
-                } catch (CrawlerException e) {
-                    view.println("[错误] " + e.getMessage());
+                    Command cmd = commands.get(args[0]);
+                    if (cmd == null) throw new ValidateError("未知命令：" + args[0]);
+                    running = cmd.exec(args);
+                } catch (CrawlerError e) {
+                    view.out("[错误] " + e.getMessage());
                 } catch (Exception e) {
-                    view.println("[系统错误] " + e.getMessage());
+                    view.out("[系统错误] " + e.getMessage());
                 }
             }
         }
     }
 
-    // ========================= MVC: View =========================
-    static class ConsoleView {
-        private final Scanner scanner = new Scanner(System.in);
-
-        String input(String prompt) {
-            System.out.print(prompt);
+    // MVC: View
+    static class View {
+        Scanner scanner = new Scanner(System.in);
+        String in(String tip) {
+            System.out.print(tip);
             return scanner.hasNextLine() ? scanner.nextLine() : "exit";
         }
-
-        void println(String text) {
-            System.out.println(text);
-        }
-
-        void showResult(CrawlResult result, Path file) {
-            println("\n爬取成功：" + result.title);
-            println("来源：" + result.source);
-            println("保存：" + file.toAbsolutePath());
-            println("预览：" + shortText(result.content) + "\n");
-        }
-
-        private String shortText(String text) {
-            return text.length() > 180 ? text.substring(0, 180) + "..." : text;
+        void out(String s) { System.out.println(s); }
+        void result(Result r, Path file) {
+            String text = r.content.length() > 160 ? r.content.substring(0, 160) + "..." : r.content;
+            out("\n完成：" + r.title + "\n来源：" + r.source + "\n保存：" + file.toAbsolutePath() + "\n预览：" + text + "\n");
         }
     }
 
-    // ========================= MVC: Model =========================
-    static class CrawlTask {
-        String type;
-        String source;
-        String name;
-
-        CrawlTask(String type, String source, String name) {
-            this.type = type;
-            this.source = source;
-            this.name = name;
+    // MVC: Model
+    static class Task {
+        String type, source, name;
+        Task(String type, String source, String name) {
+            this.type = type; this.source = source; this.name = name;
         }
     }
 
-    static class CrawlResult {
-        String strategyName;
-        String source;
-        String title;
-        String content;
+    static class Result {
+        String way, source, title, content;
         LocalDateTime time = LocalDateTime.now();
-
-        CrawlResult(String strategyName, String source, String title, String content) {
-            this.strategyName = strategyName;
-            this.source = source;
-            this.title = title;
-            this.content = content;
+        Result(String way, String source, String title, String content) {
+            this.way = way; this.source = source; this.title = title; this.content = content;
         }
-
-        String toFileText() {
-            return "爬取方式：" + strategyName + "\n"
-                    + "来源：" + source + "\n"
-                    + "时间：" + time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + "\n"
-                    + "标题：" + title + "\n\n"
-                    + content;
+        String fileText() {
+            return "方式：" + way + "\n来源：" + source + "\n时间："
+                    + time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                    + "\n标题：" + title + "\n\n" + content;
         }
     }
 
-    // ========================= Command 模式 =========================
+    // Command 模式
     interface Command {
-        boolean execute(String[] args) throws CrawlerException;
-
-        String description();
-    }
-
-    static class HelpCommand implements Command {
-        private final Map<String, Command> commands;
-        private final ConsoleView view;
-
-        HelpCommand(Map<String, Command> commands, ConsoleView view) {
-            this.commands = commands;
-            this.view = view;
-        }
-
-        public boolean execute(String[] args) {
-            commands.forEach((name, command) -> view.println(name + " - " + command.description()));
-            return true;
-        }
-
-        public String description() {
-            return "查看帮助";
-        }
+        boolean exec(String[] args) throws CrawlerError;
+        default String desc() { return "执行命令"; }
     }
 
     static class CrawlCommand implements Command {
-        private final StrategyFactory factory;
-        private final ResultStorage storage;
-        private final ConsoleView view;
-
-        CrawlCommand(StrategyFactory factory, ResultStorage storage, ConsoleView view) {
-            this.factory = factory;
-            this.storage = storage;
-            this.view = view;
+        StrategyFactory factory; Storage storage; View view;
+        CrawlCommand(StrategyFactory factory, Storage storage, View view) {
+            this.factory = factory; this.storage = storage; this.view = view;
         }
-
-        public boolean execute(String[] args) throws CrawlerException {
-            if (args.length < 3) {
-                throw new ValidationException("用法：crawl <html|title|stock> <url|股票代码> [名称]");
-            }
+        public boolean exec(String[] args) throws CrawlerError {
+            if (args.length < 3) throw new ValidateError("用法：crawl <html|title|stock> <url|股票代码> [名称]");
             CrawlStrategy strategy = factory.get(args[1]);
-            if (strategy == null) {
-                throw new ValidationException("不支持的爬取类型：" + args[1]);
-            }
-            String name = args.length >= 4 ? join(args, 3) : "";
-            CrawlResult result = strategy.crawl(args[2], name);
-            view.showResult(result, storage.save(result));
+            if (strategy == null) throw new ValidateError("不支持：" + args[1]);
+            String name = args.length > 3 ? join(args, 3) : "";
+            Result r = strategy.crawl(args[2], name);
+            view.result(r, storage.save(r));
             return true;
         }
-
-        public String description() {
-            return "单次爬取，如 crawl html https://www.example.com";
-        }
+        public String desc() { return "单次爬取"; }
     }
 
     static class BatchCommand implements Command {
-        private final StrategyFactory factory;
-        private final ResultStorage storage;
-        private final ConsoleView view;
-
-        BatchCommand(StrategyFactory factory, ResultStorage storage, ConsoleView view) {
-            this.factory = factory;
-            this.storage = storage;
-            this.view = view;
+        StrategyFactory factory; Storage storage; View view;
+        BatchCommand(StrategyFactory factory, Storage storage, View view) {
+            this.factory = factory; this.storage = storage; this.view = view;
         }
-
-        public boolean execute(String[] args) {
-            List<CrawlTask> tasks = List.of(
-                    new CrawlTask("title", "https://www.example.com", "Example"),
-                    new CrawlTask("html", "https://www.iana.org/domains/reserved", "IANA"),
-                    new CrawlTask("title", "https://www.rfc-editor.org", "RFC Editor")
-            );
-
-            int success = 0;
-            for (CrawlTask task : tasks) {
+        public boolean exec(String[] args) {
+            List<Task> tasks = List.of(
+                    new Task("title", "https://www.example.com", "Example"),
+                    new Task("html", "https://www.iana.org/domains/reserved", "IANA"),
+                    new Task("title", "https://www.rfc-editor.org", "RFC"));
+            int ok = 0;
+            for (Task t : tasks) {
                 try {
-                    CrawlResult result = factory.get(task.type).crawl(task.source, task.name);
-                    view.showResult(result, storage.save(result));
-                    success++;
-                } catch (CrawlerException e) {
-                    view.println("[失败] " + task.name + "：" + e.getMessage());
+                    Result r = factory.get(t.type).crawl(t.source, t.name);
+                    view.result(r, storage.save(r));
+                    ok++;
+                } catch (CrawlerError e) {
+                    view.out(t.name + " 失败：" + e.getMessage());
                 }
             }
-            view.println("批量爬取完成，成功 " + success + " 个网站。");
+            view.out("批量完成，成功爬取 " + ok + " 个网站");
             return true;
         }
-
-        public String description() {
-            return "批量爬取 3 个以上网站";
-        }
+        public String desc() { return "批量爬取3个以上网站"; }
     }
 
-    static class ExitCommand implements Command {
-        private final ConsoleView view;
-
-        ExitCommand(ConsoleView view) {
-            this.view = view;
-        }
-
-        public boolean execute(String[] args) {
-            view.println("程序结束。");
-            return false;
-        }
-
-        public String description() {
-            return "退出程序";
-        }
-    }
-
-    // ========================= 策略模式 =========================
+    // Strategy 模式
     interface CrawlStrategy {
-        CrawlResult crawl(String source, String name) throws CrawlerException;
+        Result crawl(String source, String name) throws CrawlerError;
     }
 
     static class StrategyFactory {
-        private final Map<String, CrawlStrategy> strategies = Map.of(
+        Map<String, CrawlStrategy> map = Map.of(
                 "html", new HtmlStrategy(),
                 "title", new TitleStrategy(),
-                "stock", new StockStrategy()
-        );
-
-        CrawlStrategy get(String type) {
-            return strategies.get(type.toLowerCase());
-        }
+                "stock", new StockStrategy());
+        CrawlStrategy get(String type) { return map.get(type); }
     }
 
     static class HtmlStrategy implements CrawlStrategy {
-        public CrawlResult crawl(String url, String name) throws CrawlerException {
-            String html = HttpTool.get(url, null);
-            String title = titleOf(html);
-            String text = html.replaceAll("(?is)<script.*?</script>", " ")
-                    .replaceAll("(?is)<style.*?</style>", " ")
+        public Result crawl(String url, String name) throws CrawlerError {
+            String html = Http.get(url, StandardCharsets.UTF_8);
+            String title = title(html);
+            String text = html.replaceAll("(?is)<script.*?</script>|<style.*?</style>", " ")
                     .replaceAll("<[^>]+>", " ")
                     .replace("&nbsp;", " ")
                     .replace("&amp;", "&")
                     .replaceAll("\\s+", " ")
                     .trim();
-            if (text.isEmpty()) {
-                throw new ParseException("网页正文为空");
-            }
-            return new CrawlResult("网页正文策略", url, name.isBlank() ? title : name, text);
+            if (text.isEmpty()) throw new ParseError("未解析到正文");
+            return new Result("网页正文策略", url, name.isBlank() ? title : name, text);
         }
     }
 
     static class TitleStrategy implements CrawlStrategy {
-        public CrawlResult crawl(String url, String name) throws CrawlerException {
-            String title = titleOf(HttpTool.get(url, null));
-            return new CrawlResult("网页标题策略", url, title, "网页标题：" + title);
+        public Result crawl(String url, String name) throws CrawlerError {
+            String title = title(Http.get(url, StandardCharsets.UTF_8));
+            return new Result("网页标题策略", url, title, "网页标题：" + title);
         }
     }
 
     static class StockStrategy implements CrawlStrategy {
-        public CrawlResult crawl(String code, String name) throws CrawlerException {
+        public Result crawl(String code, String name) throws CrawlerError {
             String url = "https://hq.sinajs.cn/list=" + code;
-            String body = HttpTool.get(url, Charset.forName("GBK"));
-            int start = body.indexOf('"'), end = body.lastIndexOf('"');
-            if (start < 0 || end <= start) {
-                throw new ParseException("股票接口无有效数据");
-            }
-            String[] p = body.substring(start + 1, end).split(",");
-            if (p.length < 10) {
-                throw new ParseException("股票字段不足");
-            }
-            String content = "股票名称：" + p[0] + "\n最新价：" + p[3] + "\n最高价：" + p[4]
+            String data = Http.get(url, Charset.forName("GBK"));
+            int s = data.indexOf('"'), e = data.lastIndexOf('"');
+            if (s < 0 || e <= s) throw new ParseError("股票接口无数据");
+            String[] p = data.substring(s + 1, e).split(",");
+            if (p.length < 10) throw new ParseError("股票字段不足");
+            String text = "股票：" + p[0] + "\n最新价：" + p[3] + "\n最高价：" + p[4]
                     + "\n最低价：" + p[5] + "\n成交量：" + p[8] + "\n成交额：" + p[9];
-            return new CrawlResult("股票策略", url, name.isBlank() ? p[0] : name, content);
+            return new Result("股票策略", url, name.isBlank() ? p[0] : name, text);
         }
     }
 
-    // ========================= 文件保存与 HTTP 工具 =========================
-    static class ResultStorage {
-        private final Path dir;
-
-        ResultStorage(String dir) {
-            this.dir = Paths.get(dir);
-        }
-
-        Path save(CrawlResult result) throws StorageException {
+    // 文件保存
+    static class Storage {
+        Path dir;
+        Storage(String dir) { this.dir = Paths.get(dir); }
+        Path save(Result r) throws SaveError {
             try {
                 Files.createDirectories(dir);
-                String time = result.time.format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-                Path file = dir.resolve(time + "_" + clean(result.title) + ".txt");
-                Files.writeString(file, result.toFileText(), StandardCharsets.UTF_8);
+                String time = r.time.format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+                Path file = dir.resolve(time + "_" + r.title.replaceAll("[\\\\/:*?\"<>|\\s]+", "_") + ".txt");
+                Files.writeString(file, r.fileText(), StandardCharsets.UTF_8);
                 return file;
             } catch (IOException e) {
-                throw new StorageException("保存文件失败", e);
+                throw new SaveError("保存失败", e);
             }
-        }
-
-        private String clean(String text) {
-            return text.replaceAll("[\\\\/:*?\"<>|\\s]+", "_");
         }
     }
 
-    static class HttpTool {
-        static String get(String url, Charset charset) throws NetworkException {
-            HttpURLConnection conn = null;
+    // HTTP 工具
+    static class Http {
+        static String get(String url, Charset charset) throws NetError {
+            HttpURLConnection c = null;
             try {
-                conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 JavaCrawler");
-                if (url.contains("hq.sinajs.cn")) {
-                    conn.setRequestProperty("Referer", "https://finance.sina.com.cn/");
-                }
-                if (conn.getResponseCode() != 200) {
-                    throw new NetworkException("HTTP 状态码：" + conn.getResponseCode());
-                }
-                Charset cs = charset == null ? StandardCharsets.UTF_8 : charset;
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), cs))) {
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        sb.append(line).append('\n');
-                    }
-                    return sb.toString();
-                }
+                c = (HttpURLConnection) URI.create(url).toURL().openConnection();
+                c.setRequestMethod("GET");
+                c.setConnectTimeout(10000);
+                c.setReadTimeout(10000);
+                c.setRequestProperty("User-Agent", "Mozilla/5.0 JavaCrawler");
+                if (url.contains("sinajs")) c.setRequestProperty("Referer", "https://finance.sina.com.cn/");
+                if (c.getResponseCode() != 200) throw new NetError("HTTP状态码：" + c.getResponseCode());
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(), charset));
+                StringBuilder sb = new StringBuilder();
+                for (String line; (line = br.readLine()) != null; ) sb.append(line).append('\n');
+                br.close();
+                return sb.toString();
+            } catch (CrawlerError e) {
+                throw e;
             } catch (Exception e) {
-                if (e instanceof NetworkException) {
-                    throw (NetworkException) e;
-                }
-                throw new NetworkException("网络请求失败：" + e.getMessage(), e);
+                throw new NetError("网络请求失败：" + e.getMessage(), e);
             } finally {
-                if (conn != null) {
-                    conn.disconnect();
-                }
+                if (c != null) c.disconnect();
             }
         }
     }
 
-    static String titleOf(String html) {
-        Matcher matcher = Pattern.compile("(?is)<title[^>]*>(.*?)</title>").matcher(html);
-        return matcher.find() ? matcher.group(1).replaceAll("\\s+", " ").trim() : "未获取到标题";
+    static String title(String html) {
+        Matcher m = Pattern.compile("(?is)<title[^>]*>(.*?)</title>").matcher(html);
+        return m.find() ? m.group(1).replaceAll("\\s+", " ").trim() : "未获取到标题";
     }
 
-    static String join(String[] args, int start) {
+    static String join(String[] a, int start) {
         StringBuilder sb = new StringBuilder();
-        for (int i = start; i < args.length; i++) {
-            if (sb.length() > 0) {
-                sb.append(' ');
-            }
-            sb.append(args[i]);
-        }
+        for (int i = start; i < a.length; i++) sb.append(i == start ? "" : " ").append(a[i]);
         return sb.toString();
     }
 
-    // ========================= 异常体系 =========================
-    static class CrawlerException extends Exception {
-        CrawlerException(String message) {
-            super(message);
-        }
-
-        CrawlerException(String message, Throwable cause) {
-            super(message, cause);
-        }
+    // 异常体系
+    static class CrawlerError extends Exception {
+        CrawlerError(String m) { super(m); }
+        CrawlerError(String m, Throwable e) { super(m, e); }
     }
-
-    static class NetworkException extends CrawlerException {
-        NetworkException(String message) {
-            super(message);
-        }
-
-        NetworkException(String message, Throwable cause) {
-            super(message, cause);
-        }
+    static class NetError extends CrawlerError {
+        NetError(String m) { super(m); }
+        NetError(String m, Throwable e) { super(m, e); }
     }
-
-    static class ParseException extends CrawlerException {
-        ParseException(String message) {
-            super(message);
-        }
+    static class ParseError extends CrawlerError {
+        ParseError(String m) { super(m); }
     }
-
-    static class StorageException extends CrawlerException {
-        StorageException(String message, Throwable cause) {
-            super(message, cause);
-        }
+    static class SaveError extends CrawlerError {
+        SaveError(String m, Throwable e) { super(m, e); }
     }
-
-    static class ValidationException extends CrawlerException {
-        ValidationException(String message) {
-            super(message);
-        }
+    static class ValidateError extends CrawlerError {
+        ValidateError(String m) { super(m); }
     }
 }
