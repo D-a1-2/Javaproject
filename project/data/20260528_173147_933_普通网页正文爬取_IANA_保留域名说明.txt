@@ -1,6 +1,0 @@
-爬取方式：普通网页正文爬取
-数据来源：https://www.iana.org/domains/reserved
-爬取时间：2026-05-28 17:31:47
-标题：IANA 保留域名说明
-内容：
-IANA-managed Reserved Domains Domains Protocols Numbers About IANA-managed Reserved Domains Certain domains are set aside, and nominally registered to &ldquo;IANA&rdquo;, for specific policy or technical purposes. Example domains As described in RFC 2606 and RFC 6761 , a number of domains such as example.com and example.org are maintained for documentation purposes. These domains may be used as illustrative examples in documents without prior coordination with us. They are not available for registration or transfer. Test IDN top-level domains These domains were temporarily delegated by IANA for the IDN Evaluation being conducted by ICANN . Domain Domain (A-label) Language Script &#1573;&#1582;&#1578;&#1576;&#1575;&#1585; XN--KGBECHTV Arabic Arabic &#1570;&#1586;&#1605;&#1575;&#1740;&#1588;&#1740; XN--HGBK6AJ7F53BBA Persian Arabic &#27979;&#35797; XN--0ZWM56D Chinese Han (Simplified variant) &#28204;&#35430; XN--G6W251D Chinese Han (Traditional variant) &#1080;&#1089;&#1087;&#1099;&#1090;&#1072;&#1085;&#1080;&#1077; XN--80AKHBYKNJ4F Russian Cyrillic &#2346;&#2352;&#2368;&#2325;&#2381;&#2359;&#2366; XN--11B5BS3A9AJ6G Hindi Devanagari (Nagari) &#948;&#959;&#954;&#953;&#956;&#942; XN--...
